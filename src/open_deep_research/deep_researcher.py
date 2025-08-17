@@ -1,9 +1,11 @@
 """Main LangGraph implementation for the Deep Research agent."""
 
 import asyncio
+import mlflow
+
 from typing import Literal
 
-from langchain.chat_models import init_chat_model
+from databricks_langchain import ChatDatabricks
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -52,9 +54,12 @@ from open_deep_research.utils import (
     think_tool,
 )
 
+mlflow.langchain.autolog()
+
 # Initialize a configurable model that we will use throughout the agent
-configurable_model = init_chat_model(
-    configurable_fields=("model", "max_tokens", "api_key"),
+configurable_model = ChatDatabricks(
+    endpoint="databricks-claude-sonnet-4",
+    configurable_fields=("endpoint", "max_tokens", "temperature"),
 )
 
 async def clarify_with_user(state: AgentState, config: RunnableConfig) -> Command[Literal["write_research_brief", "__end__"]]:
@@ -79,10 +84,8 @@ async def clarify_with_user(state: AgentState, config: RunnableConfig) -> Comman
     # Step 2: Prepare the model for structured clarification analysis
     messages = state["messages"]
     model_config = {
-        "model": configurable.research_model,
+        "endpoint": configurable.research_model,
         "max_tokens": configurable.research_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.research_model, config),
-        "tags": ["langsmith:nostream"]
     }
     
     # Configure model with structured output and retry logic
@@ -132,10 +135,8 @@ async def write_research_brief(state: AgentState, config: RunnableConfig) -> Com
     # Step 1: Set up the research model for structured output
     configurable = Configuration.from_runnable_config(config)
     research_model_config = {
-        "model": configurable.research_model,
+        "endpoint": configurable.research_model,
         "max_tokens": configurable.research_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.research_model, config),
-        "tags": ["langsmith:nostream"]
     }
     
     # Configure model for structured research question generation
@@ -192,10 +193,9 @@ async def supervisor(state: SupervisorState, config: RunnableConfig) -> Command[
     # Step 1: Configure the supervisor model with available tools
     configurable = Configuration.from_runnable_config(config)
     research_model_config = {
-        "model": configurable.research_model,
+        "endpoint": configurable.research_model,
         "max_tokens": configurable.research_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.research_model, config),
-        "tags": ["langsmith:nostream"]
+        "api_key": get_api_key_for_model(configurable.research_model, config)     
     }
     
     # Available tools: research delegation, completion signaling, and strategic thinking
@@ -390,10 +390,8 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
     
     # Step 2: Configure the researcher model with tools
     research_model_config = {
-        "model": configurable.research_model,
-        "max_tokens": configurable.research_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.research_model, config),
-        "tags": ["langsmith:nostream"]
+        "endpoint": configurable.research_model,
+        "max_tokens": configurable.research_model_max_tokens,        
     }
     
     # Prepare system prompt with MCP context if available
@@ -525,10 +523,8 @@ async def compress_research(state: ResearcherState, config: RunnableConfig):
     # Step 1: Configure the compression model
     configurable = Configuration.from_runnable_config(config)
     synthesizer_model = configurable_model.with_config({
-        "model": configurable.compression_model,
+        "endpoint": configurable.compression_model,
         "max_tokens": configurable.compression_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.compression_model, config),
-        "tags": ["langsmith:nostream"]
     })
     
     # Step 2: Prepare messages for compression
@@ -625,10 +621,8 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
     # Step 2: Configure the final report generation model
     configurable = Configuration.from_runnable_config(config)
     writer_model_config = {
-        "model": configurable.final_report_model,
-        "max_tokens": configurable.final_report_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.final_report_model, config),
-        "tags": ["langsmith:nostream"]
+        "endpoint": configurable.final_report_model,
+        "max_tokens": configurable.final_report_model_max_tokens,        
     }
     
     # Step 3: Attempt report generation with token limit retry logic
