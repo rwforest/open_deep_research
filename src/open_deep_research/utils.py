@@ -266,7 +266,7 @@ async def get_mcp_access_token(
             "client_id": "mcp_default",
             "subject_token": supabase_token,
             "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-            "resource": base_mcp_url.rstrip("/") + "/mcp",
+            "resource": base_mcp_url.rstrip("/"),
             "subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
         }
         
