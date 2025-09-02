@@ -19,7 +19,7 @@ class SearchAPI(Enum):
 class MCPConfig(BaseModel):
     """Configuration for Model Context Protocol (MCP) servers."""
     
-    url: Optional[str] = Field(
+    url: Optional[List[str]] = Field(
         default=None,
         optional=True,
     )

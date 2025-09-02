@@ -479,21 +479,18 @@ async def load_mcp_tools(
         return []
     
     # Step 3: Set up MCP server connection
-    server_url = configurable.mcp_config.url.rstrip("/") + "/mcp"
-    
-    # Configure authentication headers if tokens are available
     auth_headers = None
     if mcp_tokens:
         auth_headers = {"Authorization": f"Bearer {mcp_tokens['access_token']}"}
-    
-    mcp_server_config = {
-        "server_1": {
+
+    mcp_server_config = {}
+    for i, url in enumerate(configurable.mcp_config.url):
+        server_url = url.rstrip("/") + "/mcp"
+        mcp_server_config[f"server_{i+1}"] = {
             "url": server_url,
             "headers": auth_headers,
-            "transport": "streamable_http"
+            "transport": "streamable_http",
         }
-    }
-    # TODO: When Multi-MCP Server support is merged in OAP, update this code
     
     # Step 4: Load tools from MCP server
     try:
