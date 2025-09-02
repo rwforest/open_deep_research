@@ -16,24 +16,36 @@ class SearchAPI(Enum):
     TAVILY = "tavily"
     NONE = "none"
 
+class MCPServerConfig(BaseModel):
+    """Configuration for a single MCP server."""
+    url: str
+    auth_required: bool = False
+    token: Optional[str] = None
+
 class MCPConfig(BaseModel):
     """Configuration for Model Context Protocol (MCP) servers."""
     
-    url: Optional[List[str]] = Field(
-        default=None,
-        optional=True,
+    servers: List[MCPServerConfig] = Field(
+        default=[],
+        description="A list of MCP server configurations."
     )
-    """The URL of the MCP server"""
     tools: Optional[List[str]] = Field(
         default=None,
         optional=True,
     )
     """The tools to make available to the LLM"""
     auth_required: Optional[bool] = Field(
-        default=False,
-        optional=True,
+        default=None,
+        deprecated=True,
+        description="This field is deprecated. Use the `auth_required` field on individual servers instead."
     )
     """Whether the MCP server requires authentication"""
+    url: Optional[List[str]] = Field(
+        default=None,
+        deprecated=True,
+        description="This field is deprecated. Use the `servers` field instead."
+    )
+    """The URL of the MCP server"""
 
 class Configuration(BaseModel):
     """Main configuration class for the Deep Research agent."""

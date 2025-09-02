@@ -349,11 +349,12 @@ async def set_tokens(config: RunnableConfig, tokens: dict[str, Any]):
     # Store the tokens
     await store.aput((user_id, "tokens"), "data", tokens)
 
-async def fetch_tokens(config: RunnableConfig) -> dict[str, Any]:
+async def fetch_tokens(config: RunnableConfig, auth_url: str) -> dict[str, Any]:
     """Fetch and refresh MCP tokens, obtaining new ones if needed.
     
     Args:
         config: Runtime configuration with authentication details
+        auth_url: The URL of the MCP server to use for token exchange.
         
     Returns:
         Valid token dictionary, or None if unable to obtain tokens
@@ -368,13 +369,8 @@ async def fetch_tokens(config: RunnableConfig) -> dict[str, Any]:
     if not supabase_token:
         return None
     
-    # Extract MCP configuration
-    mcp_config = config.get("configurable", {}).get("mcp_config")
-    if not mcp_config or not mcp_config.get("url"):
-        return None
-    
     # Exchange Supabase token for MCP tokens
-    mcp_tokens = await get_mcp_access_token(supabase_token, mcp_config.get("url"))
+    mcp_tokens = await get_mcp_access_token(supabase_token, auth_url)
     if not mcp_tokens:
         return None
 
@@ -461,31 +457,49 @@ async def load_mcp_tools(
     """
     configurable = Configuration.from_runnable_config(config)
     
-    # Step 1: Handle authentication if required
-    if configurable.mcp_config and configurable.mcp_config.auth_required:
-        mcp_tokens = await fetch_tokens(config)
-    else:
-        mcp_tokens = None
-    
-    # Step 2: Validate configuration requirements
-    config_valid = (
-        configurable.mcp_config and 
-        configurable.mcp_config.url and 
-        configurable.mcp_config.tools and 
-        (mcp_tokens or not configurable.mcp_config.auth_required)
-    )
-    
-    if not config_valid:
+    if not configurable.mcp_config:
         return []
-    
-    # Step 3: Set up MCP server connection
-    auth_headers = None
-    if mcp_tokens:
-        auth_headers = {"Authorization": f"Bearer {mcp_tokens['access_token']}"}
+
+    # Logic to handle both old and new config formats for backward compatibility
+    if configurable.mcp_config.servers:
+        server_configs = configurable.mcp_config.servers
+    elif configurable.mcp_config.url:
+        # Convert old format to new format
+        auth_required = configurable.mcp_config.auth_required or False
+        server_configs = [
+            MCPServerConfig(url=u, auth_required=auth_required)
+            for u in configurable.mcp_config.url
+        ]
+    else:
+        return []
+
+    # Fetch a token if any server requires it and doesn't have a token provided.
+    fetched_token = None
+    should_fetch_token = any(
+        s.auth_required and not s.token for s in server_configs
+    )
+    if should_fetch_token:
+        first_server_for_fetching = next(
+            (s for s in server_configs if s.auth_required and not s.token), None
+        )
+        if first_server_for_fetching:
+            fetched_tokens_data = await fetch_tokens(config, first_server_for_fetching.url)
+            if fetched_tokens_data:
+                fetched_token = fetched_tokens_data['access_token']
 
     mcp_server_config = {}
-    for i, url in enumerate(configurable.mcp_config.url):
-        server_url = url.rstrip("/") + "/mcp"
+    for i, server_config in enumerate(server_configs):
+        server_url = server_config.url.rstrip("/") + "/mcp"
+        auth_headers = None
+
+        if server_config.auth_required:
+            token = server_config.token or fetched_token
+            if token:
+                auth_headers = {"Authorization": f"Bearer {token}"}
+            else:
+                warnings.warn(f"Skipping MCP server {server_config.url} due to missing token.")
+                continue
+
         mcp_server_config[f"server_{i+1}"] = {
             "url": server_url,
             "headers": auth_headers,
