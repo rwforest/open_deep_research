@@ -455,22 +455,26 @@ async def load_mcp_tools(
     Returns:
         List of configured MCP tools ready for use
     """
-    configurable = Configuration.from_runnable_config(config)
-    
-    if not configurable.mcp_config:
+    configurable = Configuration.from_runnable_config(config)    
+
+    if not configurable.mcp_config:        
         return []
+        
 
     # Logic to handle both old and new config formats for backward compatibility
     if configurable.mcp_config.servers:
+        print("here....0")
         server_configs = configurable.mcp_config.servers
     elif configurable.mcp_config.url:
         # Convert old format to new format
+        print("here....1")
         auth_required = configurable.mcp_config.auth_required or False
         server_configs = [
             MCPServerConfig(url=u, auth_required=auth_required)
             for u in configurable.mcp_config.url
         ]
     else:
+        print("here....2")
         return []
 
     # Fetch a token if any server requires it and doesn't have a token provided.
@@ -487,15 +491,17 @@ async def load_mcp_tools(
             if fetched_tokens_data:
                 fetched_token = fetched_tokens_data['access_token']
 
+    print(f"length of server_configs.... {len(server_configs)}" )
     mcp_server_config = {}
     for i, server_config in enumerate(server_configs):
-        server_url = server_config.url.rstrip("/") + "/mcp"
+        server_url = server_config.url.rstrip("/")
         auth_headers = None
 
-        if server_config.auth_required:
+        if server_config.auth_required:            
             token = server_config.token or fetched_token
             if token:
                 auth_headers = {"Authorization": f"Bearer {token}"}
+                print(f"auth_headers: {auth_headers}")
             else:
                 warnings.warn(f"Skipping MCP server {server_config.url} due to missing token.")
                 continue
@@ -508,25 +514,39 @@ async def load_mcp_tools(
     
     # Step 4: Load tools from MCP server
     try:
+        print("loading mcp tools...")
         client = MultiServerMCPClient(mcp_server_config)
         available_mcp_tools = await client.get_tools()
-    except Exception:
-        # If MCP server connection fails, return empty list
+        print(f"available tools : {len(available_mcp_tools)}")
+    except Exception as ex:
+        import traceback
+        print(ex)
+        print(traceback.format_exc())
         return []
     
     # Step 5: Filter and configure tools
     configured_tools = []
     for mcp_tool in available_mcp_tools:
         # Skip tools with conflicting names
+        print(f"looping... {mcp_tool.name}")
         if mcp_tool.name in existing_tool_names:
             warnings.warn(
                 f"MCP tool '{mcp_tool.name}' conflicts with existing tool name - skipping"
             )
             continue
         
-        # Only include tools specified in configuration
+        configured_tools = configurable.mcp_config.tools        
+        
+        # This is the special logic to handle "all"
+        select_all = "all" in configured_tools or "*" in configured_tools
+        all_tools = {"all", "*"}
+
+        configured_tools = [item for item in configured_tools if item not in all_tools]
+
+        # Only include tools specified in configuration        
         if mcp_tool.name not in set(configurable.mcp_config.tools):
-            continue
+            if not select_all:
+                continue
         
         # Wrap tool with authentication handling and add to list
         enhanced_tool = wrap_mcp_authenticate_tool(mcp_tool)
